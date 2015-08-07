@@ -3,15 +3,7 @@ package jenkins.plugins.slack;
 
 import hudson.EnvVars;
 import hudson.Util;
-import hudson.EnvVars;
-import hudson.model.BuildListener;
-import hudson.model.Result;
-import hudson.model.AbstractBuild;
-import hudson.model.AbstractProject;
-import hudson.model.Cause;
-import hudson.model.CauseAction;
-import hudson.model.Hudson;
-import hudson.model.Run;
+import hudson.model.*;
 import hudson.scm.ChangeLogSet;
 import hudson.scm.ChangeLogSet.AffectedFile;
 import hudson.scm.ChangeLogSet.Entry;
@@ -21,10 +13,8 @@ import hudson.util.LogTaskListener;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static java.util.logging.Level.INFO;
@@ -46,22 +36,24 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
     private SlackService getSlack(AbstractBuild r) {
         AbstractProject<?, ?> project = r.getProject();
-        String projectRoom = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getRoom());
-        String teamDomain = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getTeamDomain());
-        String token = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getToken());
+        String projectRoom = Util.fixEmpty(project.getProperty(SlackJobProperty.class).getRoom());
+        String teamDomain = Util.fixEmpty(project.getProperty(SlackJobProperty.class).getTeamDomain());
+        String token = Util.fixEmpty(project.getProperty(SlackJobProperty.class).getToken());
+
+        // Support for direct messaging
+        String directMessage = Util.fixEmpty(project.getProperty(SlackJobProperty.class).getSendDirectMessage());
 
         EnvVars env = null;
         try {
             env = r.getEnvironment(listener);
         } catch (Exception e) {
             listener.getLogger().println("Error retrieving environment vars: " + e.getMessage());
-            env = new EnvVars();
         }
         teamDomain = env.expand(teamDomain);
         token = env.expand(token);
         projectRoom = env.expand(projectRoom);
 
-        return notifier.newSlackService(teamDomain, token, projectRoom);
+        return notifier.newSlackService(teamDomain, token, projectRoom, directMessage);
     }
 
     public void deleted(AbstractBuild r) {
@@ -70,7 +62,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
     public void started(AbstractBuild build) {
         
         AbstractProject<?, ?> project = build.getProject();
-        SlackNotifier.SlackJobProperty jobProperty = project.getProperty(SlackNotifier.SlackJobProperty.class);
+        SlackJobProperty jobProperty = project.getProperty(SlackJobProperty.class);
 
         CauseAction causeAction = build.getAction(CauseAction.class);
 
@@ -106,7 +98,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
     public void completed(AbstractBuild r) {
         AbstractProject<?, ?> project = r.getProject();
-        SlackNotifier.SlackJobProperty jobProperty = project.getProperty(SlackNotifier.SlackJobProperty.class);
+        SlackJobProperty jobProperty = project.getProperty(SlackJobProperty.class);
         if (jobProperty == null) {
             logger.warning("Project " + project.getName() + " has no Slack configuration.");
             return;
@@ -138,7 +130,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
     String getChanges(AbstractBuild r) {
         if (!r.hasChangeSetComputed()) {
-            logger.info("No change set computed...");
+            logger.log(Level.FINER, "No change set computed...");
             return null;
         }
         ChangeLogSet changeSet = r.getChangeSet();
@@ -146,12 +138,12 @@ public class ActiveNotifier implements FineGrainedNotifier {
         Set<AffectedFile> files = new HashSet<AffectedFile>();
         for (Object o : changeSet.getItems()) {
             Entry entry = (Entry) o;
-            logger.info("Entry " + o);
+            logger.log(Level.FINER, "Entry " + o);
             entries.add(entry);
             files.addAll(entry.getAffectedFiles());
         }
         if (entries.isEmpty()) {
-            logger.info("Empty change...");
+            logger.log(Level.FINER, "Empty change...");
             return null;
         }
         Set<String> authors = new HashSet<String>();
@@ -172,11 +164,11 @@ public class ActiveNotifier implements FineGrainedNotifier {
         List<Entry> entries = new LinkedList<Entry>();
         for (Object o : changeSet.getItems()) {
             Entry entry = (Entry) o;
-            logger.info("Entry " + o);
+            logger.log(Level.FINER, "Entry " + o);
             entries.add(entry);
         }
         if (entries.isEmpty()) {
-            logger.info("Empty change...");
+            logger.log(Level.FINER, "Empty change...");
             Cause.UpstreamCause c = (Cause.UpstreamCause)r.getCause(Cause.UpstreamCause.class);
             if (c == null) {
                 return "No Changes.";
@@ -323,7 +315,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
         public MessageBuilder appendCustomMessage() {
             AbstractProject<?, ?> project = build.getProject();
-            String customMessage = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class)
+            String customMessage = Util.fixEmpty(project.getProperty(SlackJobProperty.class)
                     .getCustomMessage());
             EnvVars envVars = new EnvVars();
             try {
