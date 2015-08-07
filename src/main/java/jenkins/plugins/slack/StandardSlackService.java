@@ -67,14 +67,11 @@ public class StandardSlackService implements SlackService {
                 String response = post.getResponseBodyAsString();
                 if(responseCode != HttpStatus.SC_OK) {
                     logger.log(Level.WARNING, "Slack post may have failed. Response: " + response);
-                    return false;
                 }
-                return true;
             } catch (Exception e) {
                 logger.log(Level.WARNING, "Error posting to Slack", e);
                 return false;
             } finally {
-                logger.info("Posting succeeded");
                 post.releaseConnection();
             }
         }
