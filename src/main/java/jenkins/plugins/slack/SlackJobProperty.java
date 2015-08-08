@@ -107,7 +107,7 @@ public class SlackJobProperty extends JobProperty<AbstractProject<?, ?>> {
             Map<Descriptor<Publisher>, Publisher> map = build.getProject().getPublishersList().toMap();
             for (Publisher publisher : map.values()) {
                 if (publisher instanceof SlackNotifier) {
-                    logger.log(Level.FINER, "Invoking Started...");
+                    logger.finer("Invoking Started...");
                     ((SlackNotifier) publisher).update();
                     new ActiveNotifier((SlackNotifier) publisher, listener).started(build);
                 }

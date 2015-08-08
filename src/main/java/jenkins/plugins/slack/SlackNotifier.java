@@ -78,7 +78,7 @@ public class SlackNotifier extends Notifier {
         return BuildStepMonitor.BUILD;
     }
 
-    public SlackService newSlackService(String teamDomain, String token, String projectRoom, String directMessage) {
+    public SlackService newSlackService(String teamDomain, String token, String projectRoom) {
         // Settings are passed here from the job, if they are null, use global settings
         if (teamDomain == null) {
             teamDomain = getTeamDomain();
@@ -89,22 +89,6 @@ public class SlackNotifier extends Notifier {
         if (projectRoom == null) {
             projectRoom = getRoom();
         }
-
-        // Support for direct messaging
-        String username = System.getProperty("user.name");
-        User user = User.get(username);
-        username = user.getProperty(SlackUserProperty.class).getUsername();
-
-        // Append the user to the normal channel list
-        if (directMessage.equals("user")) {
-            projectRoom = String.format("@%s", username);
-        } else if (directMessage.equals("both")) {
-            projectRoom = (projectRoom.isEmpty())
-                    ? String.format("@%s", username)
-                    : String.format("%s,@%s", projectRoom, username);
-        }
-
-        logger.log(Level.FINER, String.format("Slack user: %s, Slack directMessage: %s, Slack room(s): %s", username, directMessage, projectRoom));
 
         return new StandardSlackService(teamDomain, token, projectRoom);
     }
