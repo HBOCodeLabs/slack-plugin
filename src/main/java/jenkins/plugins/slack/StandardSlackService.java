@@ -36,6 +36,7 @@ public class StandardSlackService implements SlackService {
     }
 
     public boolean publish(String message, String color) {
+        boolean result = true;
         for (String roomId : roomIds) {
             String url = "https://" + teamDomain + "." + host + "/services/hooks/jenkins-ci?token=" + token;
             logger.info("Posting: to " + roomId + " on " + teamDomain + " using " + url +": " + message + " " + color);
@@ -65,17 +66,21 @@ public class StandardSlackService implements SlackService {
                 post.getParams().setContentCharset("UTF-8");
                 int responseCode = client.executeMethod(post);
                 String response = post.getResponseBodyAsString();
-                if(responseCode != HttpStatus.SC_OK) {
+                if (responseCode != HttpStatus.SC_OK) {
+                    // Some rooms might not succeed (direct message off a triggered build), so overall the publish
+                    // failed, but we should still try the other rooms in our list
                     logger.warning("Slack post may have failed. Response: " + response);
+                    result = false;
                 }
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Error posting to Slack", e);
+                // A hard error (like no connectivity or a malformed responses) should terminate the publish call
+                logger.log(Level.SEVERE, "Error posting to Slack", e);
                 return false;
             } finally {
                 post.releaseConnection();
             }
         }
-        return true;
+        return result;
     }
 
     private HttpClient getHttpClient() {
