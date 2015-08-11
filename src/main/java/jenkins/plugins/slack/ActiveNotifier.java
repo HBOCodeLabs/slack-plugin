@@ -3,13 +3,13 @@ package jenkins.plugins.slack;
 
 import hudson.EnvVars;
 import hudson.Util;
-import hudson.EnvVars;
 import hudson.model.BuildListener;
 import hudson.model.Result;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
 import hudson.model.Cause;
 import hudson.model.CauseAction;
+import hudson.model.User;
 import hudson.model.Hudson;
 import hudson.model.Run;
 import hudson.scm.ChangeLogSet;
@@ -18,6 +18,7 @@ import hudson.scm.ChangeLogSet.Entry;
 import hudson.tasks.test.AbstractTestResultAction;
 import hudson.triggers.SCMTrigger;
 import hudson.util.LogTaskListener;
+import org.apache.commons.lang.ObjectUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
@@ -49,19 +50,49 @@ public class ActiveNotifier implements FineGrainedNotifier {
         String projectRoom = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getRoom());
         String teamDomain = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getTeamDomain());
         String token = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getToken());
+        String directMessage = Util.fixEmpty(project.getProperty(SlackNotifier.SlackJobProperty.class).getSendDirectMessage());
 
-        EnvVars env = null;
+        EnvVars env = new EnvVars();
         try {
             env = r.getEnvironment(listener);
         } catch (Exception e) {
             listener.getLogger().println("Error retrieving environment vars: " + e.getMessage());
-            env = new EnvVars();
         }
-        teamDomain = env.expand(teamDomain);
-        token = env.expand(token);
-        projectRoom = env.expand(projectRoom);
+        // Get the job configuration here, or if null, defer to the global configuration
+        teamDomain = ObjectUtils.defaultIfNull(env.expand(teamDomain), notifier.getTeamDomain()).toString();
+        token = ObjectUtils.defaultIfNull(env.expand(token), notifier.getAuthToken()).toString();
+        projectRoom = ObjectUtils.defaultIfNull(env.expand(projectRoom), notifier.getRoom()).toString();
 
-        return notifier.newSlackService(teamDomain, token, projectRoom);
+        // Support for direct messaging. These steps can be null if the build was a downstream trigger, which is okay
+        String slackUsername = "";
+        Cause.UserIdCause cause = (Cause.UserIdCause) r.getCause(Cause.UserIdCause.class);
+        if (cause != null) {
+            User user = User.get(cause.getUserId());
+            if (user != null) {
+                slackUsername = user.getProperty(SlackNotifier.SlackUserProperty.class).getUsername();
+            }
+        }
+
+        // Make a note if the build is trying to send direct messages but can't - but otherwise continue as normal
+        if ((directMessage.equals("user") || directMessage.equals("both")) && slackUsername.isEmpty()) {
+            logger.severe("The build is set to send direct messages, but no username was found (triggered?)");
+            // If we're *only* sending direct messages, stub in an empty slack service
+            if (directMessage.equals("user")) {
+                return new StubSlackService();
+            }
+        }
+
+        // Append the user to the normal channel list. If no job *or* global channel is set, it will default to
+        // the service hook's channel as defined here: https://slack.com/services
+        if (directMessage.equals("user")) {
+            projectRoom = String.format("@%s", slackUsername);
+        } else if (directMessage.equals("both") && ! slackUsername.isEmpty()) {
+            projectRoom = String.format("%s,@%s", projectRoom, slackUsername);
+        }
+
+        logger.finer(String.format("Slack user: %s, Slack directMessage: %s, Slack room(s): %s", slackUsername, directMessage, projectRoom));
+
+        return new StandardSlackService(teamDomain, token, projectRoom);
     }
 
     public void deleted(AbstractBuild r) {
@@ -138,7 +169,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
     String getChanges(AbstractBuild r) {
         if (!r.hasChangeSetComputed()) {
-            logger.info("No change set computed...");
+            logger.finer("No change set computed...");
             return null;
         }
         ChangeLogSet changeSet = r.getChangeSet();
@@ -146,12 +177,12 @@ public class ActiveNotifier implements FineGrainedNotifier {
         Set<AffectedFile> files = new HashSet<AffectedFile>();
         for (Object o : changeSet.getItems()) {
             Entry entry = (Entry) o;
-            logger.info("Entry " + o);
+            logger.finer("Entry " + o);
             entries.add(entry);
             files.addAll(entry.getAffectedFiles());
         }
         if (entries.isEmpty()) {
-            logger.info("Empty change...");
+            logger.finer("Empty change...");
             return null;
         }
         Set<String> authors = new HashSet<String>();
@@ -172,11 +203,11 @@ public class ActiveNotifier implements FineGrainedNotifier {
         List<Entry> entries = new LinkedList<Entry>();
         for (Object o : changeSet.getItems()) {
             Entry entry = (Entry) o;
-            logger.info("Entry " + o);
+            logger.finer("Entry " + o);
             entries.add(entry);
         }
         if (entries.isEmpty()) {
-            logger.info("Empty change...");
+            logger.finer("Empty change...");
             Cause.UpstreamCause c = (Cause.UpstreamCause)r.getCause(Cause.UpstreamCause.class);
             if (c == null) {
                 return "No Changes.";

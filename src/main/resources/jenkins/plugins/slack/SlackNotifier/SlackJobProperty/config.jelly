@@ -57,6 +57,15 @@
             <f:entry title="Project Channel" help="${rootURL}/plugin/slack/help-projectConfig-slackRoom.html">
                 <f:textbox name="slackProjectRoom" value="${instance.getRoom()}"/>
             </f:entry>
+
+            <f:entry title="Send Direct Message" help="${rootURL}/plugin/slack/help-projectConfig-slackDirectMessage.html">
+                <select name="slackSendDirectMessage">
+                    <f:option value="channel" selected="${instance.getSendDirectMessage() == 'channel'}">Channel Only</f:option>
+                    <f:option value="both" selected="${instance.getSendDirectMessage() == 'both'}">Channel And Me</f:option>
+                    <f:option value="user" selected="${instance.getSendDirectMessage() == 'user'}">Me Only</f:option>
+                </select>
+            </f:entry>
+
             <f:validateButton
                 title="${%Test Connection}" progress="${%Testing...}"
                 method="testConnection" with="slackTeamDomain,slackToken,slackProjectRoom" />
