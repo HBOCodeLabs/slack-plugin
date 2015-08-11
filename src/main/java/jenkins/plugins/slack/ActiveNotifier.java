@@ -63,19 +63,19 @@ public class ActiveNotifier implements FineGrainedNotifier {
         token = ObjectUtils.defaultIfNull(env.expand(token), notifier.getAuthToken()).toString();
         projectRoom = ObjectUtils.defaultIfNull(env.expand(projectRoom), notifier.getRoom()).toString();
 
-        // Support for direct messaging
-        String username = "";
-        try {
-            Cause.UserIdCause cause = (Cause.UserIdCause) r.getCause(Cause.UserIdCause.class);
+        // Support for direct messaging. These steps can be null if the build was a downstream trigger, which is okay
+        String slackUsername = "";
+        Cause.UserIdCause cause = (Cause.UserIdCause) r.getCause(Cause.UserIdCause.class);
+        if (cause != null) {
             User user = User.get(cause.getUserId());
-            username = user.getProperty(SlackNotifier.SlackUserProperty.class).getUsername();
-        } catch (Exception e) {
-            // no-op - this is fine in the case of triggered builds with no UserIdCause
+            if (user != null) {
+                slackUsername = user.getProperty(SlackNotifier.SlackUserProperty.class).getUsername();
+            }
         }
 
         // Make a note if the build is trying to send direct messages but can't - but otherwise continue as normal
-        if ((directMessage.equals("user") || directMessage.equals("both")) && username.isEmpty()) {
-            logger.severe("The build is set to send direct messages, but no Slack username has been configured.");
+        if ((directMessage.equals("user") || directMessage.equals("both")) && slackUsername.isEmpty()) {
+            logger.severe("The build is set to send direct messages, but no username was found (triggered?)");
             // If we're *only* sending direct messages, stub in an empty slack service
             if (directMessage.equals("user")) {
                 return new StubSlackService();
@@ -85,12 +85,12 @@ public class ActiveNotifier implements FineGrainedNotifier {
         // Append the user to the normal channel list. If no job *or* global channel is set, it will default to
         // the service hook's channel as defined here: https://slack.com/services
         if (directMessage.equals("user")) {
-            projectRoom = String.format("@%s", username);
-        } else if (directMessage.equals("both") && ! username.isEmpty()) {
-            projectRoom = String.format("%s,@%s", projectRoom, username);
+            projectRoom = String.format("@%s", slackUsername);
+        } else if (directMessage.equals("both") && ! slackUsername.isEmpty()) {
+            projectRoom = String.format("%s,@%s", projectRoom, slackUsername);
         }
 
-        logger.finer(String.format("Slack user: %s, Slack directMessage: %s, Slack room(s): %s", username, directMessage, projectRoom));
+        logger.finer(String.format("Slack user: %s, Slack directMessage: %s, Slack room(s): %s", slackUsername, directMessage, projectRoom));
 
         return new StandardSlackService(teamDomain, token, projectRoom);
     }
