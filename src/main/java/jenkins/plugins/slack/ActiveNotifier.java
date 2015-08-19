@@ -69,7 +69,10 @@ public class ActiveNotifier implements FineGrainedNotifier {
         if (cause != null) {
             User user = User.get(cause.getUserId());
             if (user != null) {
-                slackUsername = user.getProperty(SlackNotifier.SlackUserProperty.class).getUsername();
+                SlackNotifier.SlackUserProperty property = user.getProperty(SlackNotifier.SlackUserProperty.class);
+                if (property != null) {
+                    slackUsername = property.getUsername();
+                }
             }
         }
 
