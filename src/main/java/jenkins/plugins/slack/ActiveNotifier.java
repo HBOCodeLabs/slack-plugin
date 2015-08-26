@@ -114,6 +114,8 @@ public class ActiveNotifier implements FineGrainedNotifier {
                 MessageBuilder message = new MessageBuilder(notifier, build);
                 message.append(causeAction.getShortDescription());
                 notifyStart(build, message.appendOpenLink().toString());
+                // If we've sent a notification here, there's no need to continue and try to send another
+                return;
             }
         }
 
